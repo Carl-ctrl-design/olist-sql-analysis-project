@@ -1,0 +1,93 @@
+-- ============================================
+-- BUSINESS QUESTION 4: Average Delivery Time by Seller
+-- Which sellers deliver fastest and slowest?
+-- Tables used: orders, order_items, sellers
+-- New concepts: Date math, CASE WHEN, EXTRACT(EPOCH)
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+WITH delivery_stats AS (
+    SELECT
+        s.seller_id,
+        s.seller_city,
+        s.seller_state,
+
+        -- Calculate average delivery days per seller
+        ROUND(
+            AVG(
+                EXTRACT(EPOCH FROM (
+                    o.order_delivered_customer_date - 
+                    o.order_purchase_timestamp
+                )) / 86400
+            )
+        , 1) AS avg_delivery_days,
+
+        -- Count total delivered orders per seller
+        COUNT(DISTINCT o.order_id) AS total_orders,
+
+        -- Count how many orders were delivered BEFORE estimated date
+        COUNT(DISTINCT o.order_id) 
+            FILTER (
+                WHERE o.order_delivered_customer_date 
+                    <= o.order_estimated_delivery_date
+            ) AS on_time_deliveries
+
+    FROM orders o
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    JOIN sellers s
+        ON oi.seller_id = s.seller_id
+    WHERE 
+        o.order_status = 'delivered'
+        AND o.order_delivered_customer_date IS NOT NULL
+        AND o.order_purchase_timestamp IS NOT NULL
+    GROUP BY
+        s.seller_id,
+        s.seller_city,
+        s.seller_state
+
+    -- Only include sellers with meaningful order volume
+    HAVING COUNT(DISTINCT o.order_id) >= 50
+)
+
+SELECT
+    seller_id,
+    seller_city,
+    seller_state,
+    avg_delivery_days,
+    total_orders,
+    on_time_deliveries,
+
+    -- Calculate on-time delivery percentage
+    ROUND(
+        (on_time_deliveries::NUMERIC / total_orders) * 100
+    , 1) AS on_time_percentage,
+
+    -- Categorize each seller's delivery performance
+    CASE
+        WHEN avg_delivery_days <= 7  THEN 'Excellent'
+        WHEN avg_delivery_days <= 14 THEN 'Good'
+        WHEN avg_delivery_days <= 21 THEN 'Average'
+        ELSE                              'Poor'
+    END AS delivery_category
+
+FROM delivery_stats
+ORDER BY avg_delivery_days ASC
+LIMIT 20;
+
+-- FINDINGS: Delivery Performance by Seller
+-- 1. Fastest seller is in Santo Andre (SP) delivering in 5.0 days
+--    with 78.8% on-time rate -- fast but room for improvement
+-- 2. Sao Paulo seller ranks 2nd at 5.8 days with 96.9% on-time
+--    rate -- best balance of speed AND reliability
+-- 3. Belo Horizonte seller has 98.2% on-time rate -- highest
+--    reliability in the top 20 despite 6.7 day average
+-- 4. Maua seller achieved perfect 100% on-time delivery rate
+--    across 53 orders -- remarkable consistency
+-- 5. SP state dominates all 20 fastest sellers except Betim (MG)
+--    confirming Sao Paulo's logistics infrastructure advantage
+-- 6. delivery_category shows Excellent for top 3, Good for rest
+--    meaning all top 20 sellers perform well overall
+-- CONCLUSION: Location matters enormously for delivery speed.
+--    SP-based sellers have structural logistics advantages.
+--    On-time % is more important than raw speed for customer trust.

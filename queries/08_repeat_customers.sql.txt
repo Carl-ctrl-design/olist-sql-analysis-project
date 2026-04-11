@@ -1,0 +1,80 @@
+-- ============================================
+-- BUSINESS QUESTION 7: Repeat Purchase Customers
+-- How many customers returned to buy again?
+-- Tables used: orders, customers
+-- New concepts: Multiple CTEs, customer segmentation,
+--              CASE WHEN classification
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+-- CTE 1: Count how many orders each unique customer made
+WITH customer_order_counts AS (
+    SELECT
+        c.customer_unique_id,
+        COUNT(DISTINCT o.order_id)          AS total_orders,
+        MIN(o.order_purchase_timestamp)     AS first_order_date,
+        MAX(o.order_purchase_timestamp)     AS last_order_date,
+        ROUND(SUM(op.payment_value), 2)     AS total_spent
+    FROM customers c
+    JOIN orders o
+        ON c.customer_id = o.customer_id
+    JOIN order_payments op
+        ON o.order_id = op.order_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY c.customer_unique_id
+),
+
+-- CTE 2: Classify each customer based on purchase frequency
+customer_segments AS (
+    SELECT
+        customer_unique_id,
+        total_orders,
+        total_spent,
+        first_order_date,
+        last_order_date,
+
+        -- Calculate days between first and last order
+        EXTRACT(EPOCH FROM (
+            last_order_date - first_order_date
+        )) / 86400                          AS days_as_customer,
+
+        -- Segment customers by number of orders
+        CASE
+            WHEN total_orders = 1  THEN 'One-Time Buyer'
+            WHEN total_orders = 2  THEN 'Returning Customer'
+            WHEN total_orders >= 3 THEN 'Loyal Customer'
+        END                                 AS customer_segment
+
+    FROM customer_order_counts
+)
+
+-- FINAL: Summarize segments with counts and percentages
+SELECT
+    customer_segment,
+    COUNT(*)                                AS total_customers,
+    ROUND(
+        COUNT(*)::NUMERIC /
+        SUM(COUNT(*)) OVER () * 100
+    , 1)                                    AS percentage_of_customers,
+    ROUND(AVG(total_spent), 2)              AS avg_total_spent,
+    ROUND(AVG(total_orders), 1)             AS avg_orders,
+    ROUND(AVG(days_as_customer), 0)         AS avg_days_as_customer
+FROM customer_segments
+GROUP BY customer_segment
+ORDER BY avg_total_spent DESC;
+
+-- FINDINGS: Repeat Purchase Customer Analysis
+-- 1. One-Time Buyers represent 97.0% of all customers (90,556)
+--    This is an extraordinarily high churn rate
+-- 2. Returning Customers (2 orders) represent only 2.8% (2,573)
+-- 3. Loyal Customers (3+ orders) represent only 0.2% (228)
+-- 4. Loyal customers spend avg $506.79 vs one-time avg $160.76
+--    Loyal customers spend 3.15x MORE than one-time buyers
+-- 5. Loyal customers stayed engaged avg 158 days on platform
+-- 6. Only 2,801 customers out of 93,357 ever came back (3.0%)
+-- CONCLUSION: Olist has a severe customer retention problem.
+--    97% of customers never return after their first purchase.
+--    However loyal customers spend 3x more -- proving that
+--    retention investment would deliver massive revenue returns.
+--    A loyalty program targeting the 90,556 one-time buyers
+--    converting even 10% would add ~$14.5M in potential revenue.

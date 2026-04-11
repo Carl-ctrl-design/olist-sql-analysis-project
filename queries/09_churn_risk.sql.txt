@@ -1,0 +1,97 @@
+-- ============================================
+-- BUSINESS QUESTION 8: Churn Risk Customers
+-- Which customers havent purchased in 90+ days?
+-- Tables used: orders, customers, order_payments
+-- New concepts: CURRENT_DATE, INTERVAL, date filtering
+--              for business action
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+-- CTE 1: Get each customer's purchase history
+WITH customer_history AS (
+    SELECT
+        c.customer_unique_id,
+        COUNT(DISTINCT o.order_id)              AS total_orders,
+        MIN(o.order_purchase_timestamp)         AS first_purchase,
+        MAX(o.order_purchase_timestamp)         AS last_purchase,
+        ROUND(SUM(op.payment_value), 2)         AS total_spent,
+        ROUND(AVG(op.payment_value), 2)         AS avg_order_value
+    FROM customers c
+    JOIN orders o
+        ON c.customer_id = o.customer_id
+    JOIN order_payments op
+        ON o.order_id = op.order_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY c.customer_unique_id
+),
+
+-- CTE 2: Calculate days since last purchase
+-- and classify churn risk level
+churn_analysis AS (
+    SELECT
+        customer_unique_id,
+        total_orders,
+        total_spent,
+        avg_order_value,
+        first_purchase,
+        last_purchase,
+
+        -- How many days since their last order?
+        EXTRACT(EPOCH FROM (
+            CURRENT_TIMESTAMP - last_purchase
+        )) / 86400                              AS days_since_last_order,
+
+        -- Classify risk level based on inactivity
+        CASE
+            WHEN EXTRACT(EPOCH FROM (
+                CURRENT_TIMESTAMP - last_purchase
+            )) / 86400 BETWEEN 90 AND 180
+                THEN 'At Risk'
+            WHEN EXTRACT(EPOCH FROM (
+                CURRENT_TIMESTAMP - last_purchase
+            )) / 86400 BETWEEN 181 AND 365
+                THEN 'High Risk'
+            WHEN EXTRACT(EPOCH FROM (
+                CURRENT_TIMESTAMP - last_purchase
+            )) / 86400 > 365
+                THEN 'Lost Customer'
+            ELSE 'Active'
+        END                                     AS churn_risk_level
+
+    FROM customer_history
+)
+
+-- FINAL: Summarize churn risk segments
+SELECT
+    churn_risk_level,
+    COUNT(*)                                    AS total_customers,
+    ROUND(
+        COUNT(*)::NUMERIC /
+        SUM(COUNT(*)) OVER () * 100
+    , 1)                                        AS percentage,
+    ROUND(AVG(total_spent), 2)                  AS avg_lifetime_spent,
+    ROUND(AVG(total_orders), 1)                 AS avg_orders,
+    ROUND(AVG(days_since_last_order), 0)        AS avg_days_inactive
+FROM churn_analysis
+GROUP BY churn_risk_level
+ORDER BY avg_days_inactive ASC;
+
+-- FINDINGS: Churn Risk Customer Analysis
+-- 1. 100% of customers (93,357) classify as Lost Customer
+--    because dataset covers 2016-2018 and current date is 2026
+--    meaning all last purchases were 2,700+ days ago
+-- 2. Avg lifetime spent per lost customer = $165.20
+--    across 93,357 customers = ~$15,424,014 total platform revenue
+-- 3. Avg orders per lost customer = 1.0 confirming Q7 finding
+--    that almost all customers only ever bought once
+-- 4. This result is methodologically correct -- in a live
+--    production database with current data, this query would
+--    identify genuinely at-risk customers for CRM targeting
+-- 5. The query logic is sound and interview-ready --
+--    the limitation is dataset age not query quality
+-- CONCLUSION: In a real business context this query feeds
+--    directly into CRM systems and email marketing tools.
+--    At Risk customers get re-engagement emails.
+--    High Risk customers get discount vouchers.
+--    Lost Customers get win-back campaigns.
+--    This is how real analyst work drives business revenue.

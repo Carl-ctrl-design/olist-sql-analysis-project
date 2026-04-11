@@ -1,0 +1,48 @@
+-- ============================================
+-- BUSINESS QUESTION 2: Top Product Categories by Revenue
+-- Which product categories generate the most revenue?
+-- Tables used: orders, order_items, products, 
+--              category_translation, order_payments
+-- New concepts: Multiple JOINs, COALESCE, HAVING
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+SELECT
+	COALESCE(ct.product_category_name_english, 'uncategorized') as category,
+	ROUND(SUM(op.payment_value), 2)  as total_revenue,
+	count(distinct o.order_id)  as total_order,
+	round(avg(op.payment_value), 2)  as avg_order_value
+FROM orders o
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+JOIN products p
+    ON oi.product_id = p.product_id
+JOIN category_translation ct
+    ON p.product_category_name = ct.product_category_name
+JOIN order_payments op
+    ON o.order_id = op.order_id
+WHERE o.order_status = 'delivered'
+GROUP BY
+    ct.product_category_name_english
+HAVING
+    SUM(op.payment_value) > 10000
+ORDER BY
+    total_revenue DESC
+LIMIT 30;
+
+-- FINDINGS: Top Product Categories by Revenue
+-- 1. bed_bath_table is the #1 revenue category at $1,692,714
+--    with 9,272 orders — highest volume category on the platform
+-- 2. health_beauty ranks 2nd at $1,620,684 showing strong
+--    consumer demand for personal care products
+-- 3. computers_accessories ranks 3rd at $1,549,372
+-- 4. MOST INTERESTING INSIGHT: computers category ranks only 18th
+--    in total revenue ($274,671) BUT has the highest avg order
+--    value at $1,271.63 — meaning very few but very expensive
+--    purchases. office_furniture ($362.88) and fixed_telephony
+--    ($736.93) also show high avg order values
+-- 5. fashion_bags_accessories has the lowest avg order value
+--    at $101.43 — high volume, low ticket items
+-- CONCLUSION: Olist's revenue is driven by home, health, and
+-- tech categories. High avg order value categories like computers
+-- represent premium buyer segments worth targeting separately.

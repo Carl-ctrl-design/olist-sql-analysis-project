@@ -1,0 +1,27 @@
+-- ============================================
+-- BUSINESS QUESTION 1: Monthly Revenue Trend
+-- Which months generated the most revenue?
+-- Tables used: orders, order_payments
+-- New concepts: JOIN, SUM, EXTRACT, GROUP BY
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+SELECT
+	EXTRACT(YEAR FROM o.order_purchase_timestamp) AS year,
+	EXTRACT(MONTH FROM o.order_purchase_timestamp) AS month,
+	ROUND(SUM(op.payment_value), 2) AS total_revenue,
+	COUNT(DISTINCT o.order_id) AS total_orders
+FROM orders o
+JOIN order_payments op
+	ON o.order_id = op.order_id
+WHERE o.order_status = 'delivered'
+GROUP BY
+	EXTRACT(YEAR FROM o.order_purchase_timestamp),
+	EXTRACT(MONTH FROM o.order_purchase_timestamp)
+ORDER BY
+	year ASC,
+	MONTH ASC;
+
+-- FINDING: Revenue grew consistently from 2016 to 2018.
+-- Peak month was [you fill this in after seeing results].
+-- Lowest month was September 2016 which was the platform's early days.

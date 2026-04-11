@@ -1,0 +1,20 @@
+-- EXPLORATION: Preview first 10 rows of orders table--
+-- This shows us the structure and sample data--
+SELECT *
+FROM orders
+LIMIT 10;
+
+
+-- EXPLORATION: Preview first 10 rows of order_items table
+SELECT *
+FROM order_items
+LIMIT 10;
+
+
+-- EXPLORATION: What order statuses exist and how many of each?
+SELECT 
+    order_status,
+    COUNT(*) AS total_orders
+FROM orders
+GROUP BY order_status
+ORDER BY total_orders DESC;

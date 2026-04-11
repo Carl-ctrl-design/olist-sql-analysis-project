@@ -1,0 +1,100 @@
+-- ============================================
+-- BUSINESS QUESTION 6: Review Scores by Category
+-- Which categories have highest and lowest customer satisfaction?
+-- Tables used: order_reviews, orders, order_items,
+--              products, category_translation
+-- New concepts: Subquery, benchmark comparison, HAVING multiple conditions
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+WITH category_reviews AS (
+    SELECT
+        COALESCE(
+            ct.product_category_name_english,
+            'Uncategorized'
+        )                                       AS category,
+        COUNT(r.review_id)                      AS total_reviews,
+        ROUND(AVG(r.review_score), 2)           AS avg_review_score,
+
+        -- Count reviews by score rating
+        COUNT(CASE WHEN r.review_score = 5 
+            THEN 1 END)                         AS five_star,
+        COUNT(CASE WHEN r.review_score = 4 
+            THEN 1 END)                         AS four_star,
+        COUNT(CASE WHEN r.review_score = 3 
+            THEN 1 END)                         AS three_star,
+        COUNT(CASE WHEN r.review_score IN (1,2) 
+            THEN 1 END)                         AS low_scores,
+
+        -- Calculate percentage of 5 star reviews
+        ROUND(
+            COUNT(CASE WHEN r.review_score = 5 
+                THEN 1 END)::NUMERIC /
+            NULLIF(COUNT(r.review_id), 0) * 100
+        , 1)                                    AS five_star_percentage
+
+    FROM order_reviews r
+    JOIN orders o
+        ON r.order_id = o.order_id
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    JOIN products p
+        ON oi.product_id = p.product_id
+    JOIN category_translation ct
+        ON p.product_category_name = ct.product_category_name
+    WHERE o.order_status = 'delivered'
+    GROUP BY
+        ct.product_category_name_english
+    HAVING
+        COUNT(r.review_id) >= 100
+        AND AVG(r.review_score) IS NOT NULL
+)
+
+SELECT
+    category,
+    total_reviews,
+    avg_review_score,
+    five_star,
+    four_star,
+    three_star,
+    low_scores,
+    five_star_percentage,
+
+    -- Compare each category against overall platform average
+    -- This is a subquery -- it runs once and returns one number
+    -- which every row then compares itself against
+    ROUND(
+        avg_review_score - (
+            SELECT AVG(review_score) 
+            FROM order_reviews
+        )
+    , 2)                                        AS vs_platform_avg,
+
+    -- Performance label based on score
+    CASE
+        WHEN avg_review_score >= 4.5 THEN 'Excellent'
+        WHEN avg_review_score >= 4.0 THEN 'Good'
+        WHEN avg_review_score >= 3.5 THEN 'Average'
+        ELSE                              'Needs Improvement'
+    END                                         AS satisfaction_level
+
+
+-- FINDINGS: Customer Satisfaction by Category
+-- 1. HIGHEST rated: books_general_interest at 4.51 with 73.9% 
+--    five star rate -- customers love book purchases on Olist
+-- 2. LOWEST rated: office_furniture at 3.52 with only 37.2%
+--    five star rate -- worst performing category on platform
+-- 3. Platform average is approximately 4.09
+-- 4. books_general_interest is the only Excellent category
+--    everything else is Good or Average
+-- 5. bed_bath_table is #1 in revenue (Q2) but only scores 3.92
+--    in reviews -- customers are spending but not fully satisfied
+-- 6. computers_accessories is #3 in revenue but scores 3.98
+--    below platform average -- quality or delivery issue likely
+-- 7. office_furniture has 423 low scores out of 1,664 reviews
+--    that is 25% of customers unhappy -- serious problem
+-- 8. fashion and food categories score consistently high
+--    suggesting customers trust Olist for these purchases
+-- CONCLUSION: High revenue does not equal high satisfaction.
+--    bed_bath_table and computers_accessories need quality review.
+--    office_furniture is a reputational risk for the platform.

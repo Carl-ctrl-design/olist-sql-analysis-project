@@ -1,0 +1,93 @@
+-- ============================================
+-- BUSINESS QUESTION 9: Month over Month Revenue Growth
+-- How did revenue grow or shrink each month?
+-- Tables used: orders, order_payments
+-- New concepts: LAG() window function, MoM calculation,
+--              growth rate percentage
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+-- CTE 1: Calculate total revenue per month
+WITH monthly_revenue AS (
+    SELECT
+        EXTRACT(YEAR FROM o.order_purchase_timestamp)   AS year,
+        EXTRACT(MONTH FROM o.order_purchase_timestamp)  AS month,
+        ROUND(SUM(op.payment_value), 2)                 AS total_revenue,
+        COUNT(DISTINCT o.order_id)                      AS total_orders
+    FROM orders o
+    JOIN order_payments op
+        ON o.order_id = op.order_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY
+        EXTRACT(YEAR FROM o.order_purchase_timestamp),
+        EXTRACT(MONTH FROM o.order_purchase_timestamp)
+),
+
+-- CTE 2: Use LAG() to bring previous month revenue
+-- into the current month row
+revenue_with_lag AS (
+    SELECT
+        year,
+        month,
+        total_revenue,
+        total_orders,
+
+        -- LAG() looks back 1 row and returns that revenue value
+        -- OVER (ORDER BY year, month) defines the row order
+        -- so LAG knows which row is "previous"
+        LAG(total_revenue, 1) OVER (
+            ORDER BY year, month
+        )                                               AS prev_month_revenue
+
+    FROM monthly_revenue
+)
+
+-- FINAL: Calculate MoM growth rate
+SELECT
+    year,
+    month,
+    total_revenue,
+    total_orders,
+    prev_month_revenue,
+
+    -- Revenue difference vs previous month
+    ROUND(
+        total_revenue - prev_month_revenue
+    , 2)                                                AS revenue_change,
+
+    -- Percentage growth vs previous month
+    ROUND(
+        (total_revenue - prev_month_revenue) /
+        NULLIF(prev_month_revenue, 0) * 100
+    , 1)                                                AS mom_growth_pct,
+
+    -- Classify each month's performance
+    CASE
+        WHEN total_revenue > prev_month_revenue THEN 'Growth'
+        WHEN total_revenue < prev_month_revenue THEN 'Decline'
+        WHEN prev_month_revenue IS NULL         THEN 'First Month'
+        ELSE                                         'Flat'
+    END                                               AS growth_direction
+
+FROM revenue_with_lag
+ORDER BY year ASC, month ASC;
+
+-- FINDINGS: Month over Month Revenue Growth
+-- 1. Platform started Oct 2016 at $46,566 -- first real month
+-- 2. Dec 2016 crashed to $19.62 (1 order) -- likely data gap
+--    or platform technical issue that month
+-- 3. Jan 2017 exploded +649,979.9% -- recovery from Dec anomaly
+-- 4. Nov 2017 was peak growth month at +53.6% MoM ($1,153,528)
+--    likely driven by Black Friday / holiday season shopping
+-- 5. Dec 2017 declined -26.9% after Nov peak -- post-holiday
+--    correction which is normal seasonal behavior
+-- 6. Peak revenue month was Nov 2017 at $1,153,528
+-- 7. 2018 shows maturing growth -- smaller swings, more stable
+--    ranging between -10% and +16% MoM
+-- 8. Aug 2018 is final month at $985,414 -- dataset cutoff
+-- 9. Overall growth from $46,566 (Oct 2016) to $1,153,528 peak
+--    represents 2,378% total growth in just 13 months
+-- CONCLUSION: Olist showed explosive early growth stabilizing
+--    into mature platform patterns by 2018. November seasonality
+--    is a key revenue driver -- Black Friday effect is clear.
+--    December anomaly in 2016 warrants data quality investigation.

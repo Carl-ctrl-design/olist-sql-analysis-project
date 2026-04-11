@@ -1,0 +1,52 @@
+-- PART B: Monthly payment method breakdown
+-- Shows how payment preferences shift over time
+
+SELECT
+    EXTRACT(YEAR FROM o.order_purchase_timestamp)   AS year,
+    EXTRACT(MONTH FROM o.order_purchase_timestamp)  AS month,
+
+    -- Count orders per payment type using CASE WHEN pivot
+    COUNT(DISTINCT CASE 
+        WHEN op.payment_type = 'credit_card' 
+        THEN o.order_id END)                        AS credit_card_orders,
+
+    COUNT(DISTINCT CASE 
+        WHEN op.payment_type = 'boleto' 
+        THEN o.order_id END)                        AS boleto_orders,
+
+    COUNT(DISTINCT CASE 
+        WHEN op.payment_type = 'voucher' 
+        THEN o.order_id END)                        AS voucher_orders,
+
+    COUNT(DISTINCT CASE 
+        WHEN op.payment_type = 'debit_card' 
+        THEN o.order_id END)                        AS debit_card_orders,
+
+    -- Total revenue per month
+    ROUND(SUM(op.payment_value), 2)                 AS total_revenue
+
+FROM orders o
+JOIN order_payments op
+    ON o.order_id = op.order_id
+WHERE o.order_status = 'delivered'
+GROUP BY
+    EXTRACT(YEAR FROM o.order_purchase_timestamp),
+    EXTRACT(MONTH FROM o.order_purchase_timestamp)
+ORDER BY year ASC, month ASC;
+
+-- FINDINGS: Payment Method Preferences
+-- 1. Credit card dominates at 75.2% of all transactions
+--    generating $12,542,084 in total revenue
+-- 2. Credit card avg installments is 3.5 -- confirming Brazilian
+--    culture of splitting purchases across multiple months
+-- 3. Boleto is 2nd at 19.5% with $2,869,361 revenue --
+--    essential payment method for unbanked Brazilian customers
+-- 4. Vouchers represent only 3.8% with lowest avg value of
+--    $65.70 -- used mainly for discounts and small purchases
+-- 5. Debit card barely used at 1.5% despite being common
+--    in physical retail -- customers prefer credit installments
+-- 6. not_defined appears 3 times with $0.00 -- data quality
+--    issue worth flagging. Only 3 rows so negligible impact
+-- CONCLUSION: Installment credit is the engine of Olist revenue.
+--    Removing credit card installments would devastate sales.
+--    Boleto must be maintained for financial inclusion.

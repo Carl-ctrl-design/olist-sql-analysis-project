@@ -1,0 +1,91 @@
+-- ============================================
+-- BUSINESS QUESTION 10: Revenue by State
+-- Which Brazilian states generate the most revenue?
+-- Tables used: orders, order_payments, customers
+-- New concepts: DENSE_RANK(), geographic analysis,
+--              multi-metric ranking
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+WITH state_metrics AS (
+    SELECT
+        c.customer_state,
+        COUNT(DISTINCT o.order_id)              AS total_orders,
+        COUNT(DISTINCT c.customer_unique_id)    AS unique_customers,
+        ROUND(SUM(op.payment_value), 2)         AS total_revenue,
+        ROUND(AVG(op.payment_value), 2)         AS avg_order_value,
+        ROUND(AVG(
+            EXTRACT(EPOCH FROM (
+                o.order_delivered_customer_date -
+                o.order_purchase_timestamp
+            )) / 86400
+        ), 1)                                   AS avg_delivery_days
+    FROM orders o
+    JOIN customers c
+        ON o.customer_id = c.customer_id
+    JOIN order_payments op
+        ON o.order_id = op.order_id
+    WHERE
+        o.order_status = 'delivered'
+        AND o.order_delivered_customer_date IS NOT NULL
+    GROUP BY c.customer_state
+)
+
+SELECT
+    -- Rank by revenue using DENSE_RANK
+    DENSE_RANK() OVER (
+        ORDER BY total_revenue DESC
+    )                                           AS revenue_rank,
+
+    customer_state,
+    total_orders,
+    unique_customers,
+    total_revenue,
+    avg_order_value,
+    avg_delivery_days,
+
+    -- Each state's share of total platform revenue
+    ROUND(
+        total_revenue /
+        SUM(total_revenue) OVER () * 100
+    , 1)                                        AS revenue_share_pct,
+
+    -- Classify state tier based on revenue
+    CASE
+        WHEN DENSE_RANK() OVER (
+            ORDER BY total_revenue DESC) = 1
+                                    THEN 'Dominant'
+        WHEN DENSE_RANK() OVER (
+            ORDER BY total_revenue DESC) <= 3
+                                    THEN 'Major Market'
+        WHEN DENSE_RANK() OVER (
+            ORDER BY total_revenue DESC) <= 10
+                                    THEN 'Growth Market'
+        ELSE                             'Emerging Market'
+    END                                         AS market_tier
+
+FROM state_metrics
+ORDER BY revenue_rank ASC;
+
+-- FINDINGS: Revenue by Brazilian State
+-- 1. SP (Sao Paulo) is Dominant at 37.4% of total revenue
+--    ($5,769,081) with 40,493 orders -- more than double RJ
+-- 2. Top 3 states SP+RJ+MG account for 62.5% of all revenue
+--    heavy geographic concentration in Southeast Brazil
+-- 3. Emerging Market states show HIGHER avg order values:
+--    PB $250.15, AC $235.98, AP $233.94, AL $229.19
+--    vs SP at only $136.38 -- remote customers buy less often
+--    but spend more per order when they do buy
+-- 4. Longest delivery times are remote northern states:
+--    RR 29.4 days, AP 27.1 days, AM 26.6 days, AL 24.7 days
+--    vs SP at only 8.8 days -- 3x faster in Sao Paulo
+-- 5. RR (Roraima) is smallest market -- only 41 orders,
+--    40 customers, $9,039 total revenue across entire period
+-- 6. BA (Bahia) ranks 7th but has highest avg order value
+--    among Growth Markets at $169.76
+-- CONCLUSION: Olist revenue is dangerously concentrated in
+--    Southeast Brazil. Northern states are massively underserved
+--    with delivery times 3x longer than SP. However high avg
+--    order values in remote states suggest strong willingness
+--    to pay -- logistics improvement could unlock significant
+--    untapped revenue in these emerging markets.

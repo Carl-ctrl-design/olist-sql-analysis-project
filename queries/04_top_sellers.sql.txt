@@ -1,0 +1,62 @@
+-- ============================================
+-- BUSINESS QUESTION 3: Top 20 Sellers by Revenue
+-- Who are the highest performing sellers on Olist?
+-- Tables used: order_items, order_payments, 
+--              orders, sellers
+-- New concepts: Window functions, RANK(), CTE (WITH clause)
+-- Author: Carl Waiti | April 2026
+-- ============================================
+
+-- STEP 1: We use a CTE (Common Table Expression)
+-- A CTE is a temporary named result we build first
+-- then query from. Think of it as a temporary table
+-- that only exists during this query.
+
+WITH seller_revenue AS (
+    SELECT
+        s.seller_id,
+        s.seller_city,
+        s.seller_state,
+        ROUND(SUM(oi.price), 2)          AS total_revenue,
+        COUNT(DISTINCT oi.order_id)       AS total_orders,
+        ROUND(AVG(oi.price), 2)           AS avg_item_price
+    FROM order_items oi
+    JOIN orders o
+        ON oi.order_id = o.order_id
+    JOIN sellers s
+        ON oi.seller_id = s.seller_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY
+        s.seller_id,
+        s.seller_city,
+        s.seller_state
+)
+
+-- STEP 2: Now query from the CTE and add the RANK
+SELECT
+    RANK() OVER (ORDER BY total_revenue DESC)  AS revenue_rank,
+    seller_id,
+    seller_city,
+    seller_state,
+    total_revenue,
+    total_orders,
+    avg_item_price
+FROM seller_revenue
+ORDER BY revenue_rank
+LIMIT 20;
+
+
+-- FINDINGS: Top 10 Sellers by Revenue
+-- 1. Top seller is based in Guariba (SP) generating $226,987
+--    across 1,124 orders with avg item price of $197.72
+-- 2. SP (Sao Paulo state) completely dominates the top sellers
+--    list -- 15 out of 20 visible sellers are from SP state
+-- 3. MOST INTERESTING: Rank 2 seller (Lauro de Freitas, BA)
+--    has only 348 orders but avg item price of $544.85 --
+--    a premium seller doing less volume but higher ticket sales
+-- 4. Rank 3 seller (Ibitinga, SP) has the most orders at 1,772
+--    but avg item price of only $101.02 -- high volume budget seller
+-- 5. Rio de Janeiro (RJ) appears at ranks 11, 13, 20
+-- CONCLUSION: Sao Paulo dominates Olist's seller base.
+--    Two distinct seller models exist: high volume/low price
+--    vs low volume/high price. Both reach similar revenue totals.
